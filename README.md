@@ -1,13 +1,13 @@
-# DNS_Hamiltonian.hpp
+# CSC_Hamiltonian.hpp
 
 ## 概要
-`DNS_Hamiltonian.hpp`はスピン1/2 Heisenberg模型
+`CSC_Hamiltonian.hpp`はスピン1/2 Heisenberg模型
 $$
  \mathcal{H} = \sum_{i,j}\bm{S}_i \cdot \bm{S}_j
 $$
 に対し、
 
-- Hamiltonian行列の作成
+- Hamiltonian行列を作成し、疎行列格納形式の1つであるCSC形式で保存する
 - Hamiltonian行列に対してlanczos法を用いた厳密対角化による基底状態の固有値、固有ベクトルの計算
 
 を行うためのライブラリです。動作についての注意事項があります。詳しくは動作環境の欄を御覧ください
@@ -32,14 +32,14 @@ $$
 1. まずはライブラリを適当なディレクトリにダウンロードします。<br>
    今回は、`dir`というディレクトリを作成し、そこに
    ```
-   git clone https://github.com/bokazu/class_DNS_Hamiltonian.git
+   git clone https://github.com/bokazu/class_CSC_Hamiltonian.git
    ```
    でダウンロードします。ディレクトリ構造は以下のようになります。なお、`EigenTest.cpp`、`HamiltonianTest.cpp`といったファイルは削除していただいてかまいません、下に記したファイルが存在すれば大丈夫です。
     ```
     dir
-    ├── DNS_Hamiltonian
-    │   ├── DNS_Hamiltonian.cpp
-    │   └── DNS_Hamiltonian.hpp
+    ├── CSC_Hamiltonian
+    │   ├── CSC_Hamiltonian.cpp
+    │   └── CSC_Hamiltonian.hpp
     ├── EIGEN
     │   ├── EIGEN.cpp
     │   ├── EIGEN.hpp
@@ -59,11 +59,13 @@ $$
         ```cpp
         /*main.cpp*/
 
-        #include "DNS_Hamiltonian/DNS_Hamiltonian.hpp"
+        #include "CSC_Hamiltonian/DNS_Hamiltonian.hpp"
+
+        using namespace std;
 
         int main(){
             int site_num = 2; //系のサイト数
-            DNS_Hamiltonian H("jset.txt" , site_num);
+            CSC_Hamiltonian H("jset.txt" , site_num);
 
             H.hamiltonian(); //Hamiltonian行列を作成
         }
@@ -79,12 +81,14 @@ $$
         ```cpp
         /*main.cpp*/
 
-        #include "DNS_Hamiltonian/DNS_Hamiltonian.hpp"
+        #include "CSC_Hamiltonian/CSC_Hamiltonian.hpp"
+
+        using namespace std;
 
         int main(){
                 
             int site_num = 2; //系のサイト数
-            DNS_Hamiltonian H("jset.txt" , site_num);
+            CSC_Hamiltonian H("jset.txt" , site_num);
 
             H.hamiltonian(); // Hamiltonian行列を作成
 
@@ -93,7 +97,7 @@ $$
         }
         ```
 
-        DNS_Hamiltonianクラスのオブジェクト`H`の情報は以下のようにして標準出力することができます。
+        CSC_Hamiltonianクラスのオブジェクト`H`の情報は以下のようにして標準出力することができます。
 
         ```cpp
          std::cout << H << std::endl;
@@ -105,6 +109,7 @@ $$
         ----------------------------------------------------
         @Number of site    : 2
         @Matrix dimension : 4
+        @nnz              : 6
 
         file name : jset1.txt
         ======================================
@@ -122,12 +127,14 @@ $$
         ```cpp
         /*main.cpp*/
 
-        #include "DNS_Hamiltonian/DNS_Hamiltonian.hpp"
+        #include "CSC_Hamiltonian/CSC_Hamiltonian.hpp"
+
+        using namespace std;
 
         int main(){
                 
             int site_num = 2; //系のサイト数
-            DNS_Hamiltonian H("jset.txt" , site_num);
+            CSC_Hamiltonian H("jset.txt" , site_num);
 
             H.hamiltonian(); // Hamiltonian行列を作成
 
@@ -140,13 +147,13 @@ $$
     ```makefile
     l_b = -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_ilp64.a ${MKLROOT}/lib/intel64/libmkl_intel_thread.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group -liomp5 -lpthread -lm -ldl
 
-    program : DNS_HamiltonianTest.o DNS_Hamiltonian.o Jset.o EIGEN.o
+    program : main.o CSC_Hamiltonian.o Jset.o EIGEN.o
 	icpc -o $@ $^ $(l_b)
 
     main.o : main.cpp
 	icpc -c $< $(l_b)
 
-    DNS_Hamiltonian.o : DNS_Hamiltonian/DNS_Hamiltonian.cpp
+    CSC_Hamiltonian.o : CSC_Hamiltonian/DNS_Hamiltonian.cpp
 	icpc -c $< $(l_b)
 
     Jset.o : Jset/Jset.cpp
@@ -176,48 +183,12 @@ $$
 
 
 1. 固有値のみを計算する場合の消費メモリ量
-    | サイト数  |  反復回数  |  消費メモリ量\[GB\] |
-    |:----------:|:------:|:-------------:|
-    |2|4|3.84e-07|
-    |3|8|1.02e-06|
-    |4|16|3.07e-06|
-    |5|30|1.01e-05|
-    |6|50|3.62e-05|
-    |7|80|1.37e-04|
-    |8|100|5.33e-04|
-    |9|100|2.11e-03|
-    |10|100|8.41e-03|
-    |11|200|3.36e-02|
-    |12|200|1.34e-01|
-    |13|200|5.37e-01|
-    |14|200|2.15e+00|
-    |15|200|8.59e+00|
-    |16|200|3.44e+01|
-    |17|200|1.37e+02|
-    |18|200|5.50e+02|
-    |19|200|2.20e+03|
-    |20|200|8.80e+03|
+    $x$をHamiltonian行列の非ゼロ要素数、$n$を系の格子点数、$l$をlanczos法における反復回数とすると
+
+    $$消費メモリ = (12x + 48l + 20*2^n - 12) * 10^{-9} \text{GB}$$
 
 
 2. 固有ベクトルも計算する場合のメモリ消費量
-    | サイト数  |  反復回数  |  消費メモリ量\[GB\] |
-    |:----------:|:------:|:-------------:|
-    |2|4|5.44e-07|
-    |3|8|1.60e-06|
-    |4|16|5.25e-06|
-    |5|30|1.76e-05|
-    |6|50|5.67e-05|
-    |7|80|1.89e-04|
-    |8|100|6.15e-04|
-    |9|100|2.19e-03|
-    |10|100|8.50e-03|
-    |11|200|3.39e-02|
-    |12|200|1.35e-01|
-    |13|200|5.37e-01|
-    |14|200|2.15e+00|
-    |15|200|8.59e+00|
-    |16|200|3.44e+01|
-    |17|200|1.37e+02|
-    |18|200|5.50e+02|
-    |19|200|2.20e+03|
-    |20|200|8.80e+03|
+    $x$をHamiltonian行列の非ゼロ要素数、$n$を系の格子点数、$l$をlanczos法における反復回数とすると
+
+    $$消費メモリ = (12x + 48l + 28*2^n - 12) * 10^{-9} \text{GB}$$
