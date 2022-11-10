@@ -4,8 +4,8 @@ using namespace std;
 
 int main()
 {
-    CSC_Hamiltonian H("jset_16site_pb.txt", 16);
+    CSC_Hamiltonian H("jset.txt", 8);
     H.csc_hamiltonian();
-    H.csc_lanczos(200);
+    H.csc_lanczos(100, 'V');
     cout << H << endl;
 }

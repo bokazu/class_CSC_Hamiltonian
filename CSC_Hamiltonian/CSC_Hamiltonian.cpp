@@ -294,8 +294,8 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
     //固有ベクトルを計算する場合は配列を確保する
     if (c == 'V')
     {
-        tri_diag_evec = new double[tri_mat_dim];
-        vec_init(tri_mat_dim, tri_diag_evec);
+        tri_diag_evec = new double[tri_mat_dim * tri_mat_dim];
+        vec_init(tri_mat_dim * tri_mat_dim, tri_diag_evec);
     }
 
     /*==============================lanczos
@@ -478,6 +478,11 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
             }
             /*=====================================================================*/
         }
+        else
+        {
+            --ls_count;
+            break;
+        }
     }
 
     /*========================基底状態の固有値===========================*/
@@ -496,7 +501,7 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
         vec_init(mat_dim, u[1]);
         cblas_dcopy(mat_dim, Eig.data(), 1, u[0], 1);
 
-        for (int ls = 0; ls < ls_count + 2; ls++)
+        for (int ls = 0; ls < ls_count+2; ls++)
         {
             if (ls % 2 == 0)
             {
