@@ -2,9 +2,9 @@
 
 ## 概要
 `CSC_Hamiltonian.hpp`はスピン1/2 Heisenberg模型
-$$
- \mathcal{H} = \sum_{i,j}\bm{S}_i \cdot \bm{S}_j
-$$
+
+$$\mathcal{H} = \sum_{i,j}\bm{S}_i \cdot \bm{S}_j$$
+
 に対し、
 
 - Hamiltonian行列を作成し、疎行列格納形式の1つであるCSC形式で保存する
