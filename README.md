@@ -3,7 +3,7 @@
 ## 概要
 `CSC_Hamiltonian.hpp`はスピン1/2 Heisenberg模型
 
-$$\mathcal{H} = \sum_{i,j}\bm{S}_i \cdot \bm{S}_j$$
+$$\mathcal{H} = \sum_{i,j} \boldsymbol{S}_i \cdot \boldsymbol{S}_j$$
 
 に対し、
 
@@ -59,7 +59,7 @@ $$\mathcal{H} = \sum_{i,j}\bm{S}_i \cdot \bm{S}_j$$
         ```cpp
         /*main.cpp*/
 
-        #include "CSC_Hamiltonian/DNS_Hamiltonian.hpp"
+        #include "CSC_Hamiltonian/CSC_Hamiltonian.hpp"
 
         using namespace std;
 
@@ -93,7 +93,7 @@ $$\mathcal{H} = \sum_{i,j}\bm{S}_i \cdot \bm{S}_j$$
             H.hamiltonian(); // Hamiltonian行列を作成
 
             int tri_mat_dim = 4; //Lanczos法における最大反復回数を設定する
-            H.dns_lanczos(tri_mat_dim);
+            H.csc_lanczos(tri_mat_dim);
         }
         ```
 
@@ -139,7 +139,7 @@ $$\mathcal{H} = \sum_{i,j}\bm{S}_i \cdot \bm{S}_j$$
             H.hamiltonian(); // Hamiltonian行列を作成
 
             int tri_mat_dim = 4; //Lanczos法における最大反復回数を設定する
-            H.dns_lanczos(tri_mat_dim, 'V');//引数として'V'を加える
+            H.csc_lanczos(tri_mat_dim, 'V');//引数として'V'を加える
         }
         ```
  5. 実行する<br>
