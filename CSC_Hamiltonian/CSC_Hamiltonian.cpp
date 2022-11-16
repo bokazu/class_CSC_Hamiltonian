@@ -129,7 +129,8 @@ void CSC_Hamiltonian::count_nnz()
                 }
             }
         }
-        if (szz != 0.) nnz++;
+        if (szz != 0.)
+            nnz++;
     }
 }
 
@@ -236,13 +237,14 @@ void CSC_Hamiltonian::csc_mvprod(double *u_i, double *u_j)
 void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
 {
     ls_count = 0;
-    double eps = 1.0;      // step間の誤差を代入するための変数
-    double err = 1.0e-16;  //要求精度
+    double eps = 1.0;     // step間の誤差を代入するための変数
+    double err = 1.0e-16; //要求精度
     bool err_checker =
-        true;  //誤差が要求精度の範囲内に収まっているかを確認するためのflag
+        true; //誤差が要求精度の範囲内に収まっているかを確認するためのflag
 
     //固有ベクトルを格納するための配列の要素数を変更する(デフォルトは要素数1)
-    if (c == 'V') Eig.evec_elem(mat_dim);
+    if (c == 'V')
+        Eig.evec_elem(mat_dim);
 
     /*=================初期ベクトルの用意================*/
     double **u = new double *[2];
@@ -261,7 +263,8 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
     }
     sdz(mat_dim, u[0]);
 
-    if (c == 'V') cblas_dcopy(mat_dim, u[0], 1, Eig.data(), 1);
+    if (c == 'V')
+        cblas_dcopy(mat_dim, u[0], 1, Eig.data(), 1);
     /*============================================*/
 
     //三重対角行列の主対角成分
@@ -361,7 +364,7 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
                                           sub_diag, tri_diag_evec, ls + 1);
                     }
                     else
-                    {  //固有ベクトルも計算する場合
+                    { //固有ベクトルも計算する場合
                         info =
                             LAPACKE_dstev(LAPACK_COL_MAJOR, 'V', ls + 1, diag,
                                           sub_diag, tri_diag_evec, ls + 1);
@@ -474,7 +477,10 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
                 if (eps > err)
                     err_checker = true;
                 else
+                {
                     err_checker = false;
+                    lanczos_check = true;
+                }
             }
             /*=====================================================================*/
         }
@@ -501,7 +507,7 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
         vec_init(mat_dim, u[1]);
         cblas_dcopy(mat_dim, Eig.data(), 1, u[0], 1);
 
-        for (int ls = 0; ls < ls_count+2; ls++)
+        for (int ls = 0; ls < ls_count + 2; ls++)
         {
             if (ls % 2 == 0)
             {
@@ -554,7 +560,8 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
 
     delete[] diag;
     delete[] sub_diag;
-    if (c == 'V') delete[] tri_diag_evec;
+    if (c == 'V')
+        delete[] tri_diag_evec;
 }
 
 /*========================================================================================*/
@@ -613,6 +620,7 @@ std::string CSC_Hamiltonian::to_string() const
     s << "@Matrix dimension : " << mat_dim << std::endl;
     s << "@non zero element : " << nnz << std::endl;
     s << J.to_string() << std::endl;
+    s << "@lanczos chcekc   : " << lanczos_check << std::endl;
     s << "@lanczos step     : " << ls_count << std::endl;
     s << Eig.to_string() << std::endl;
     s << "-------------------------------------------------------\n";

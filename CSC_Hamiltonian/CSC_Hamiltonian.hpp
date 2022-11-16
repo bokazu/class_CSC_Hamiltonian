@@ -10,15 +10,16 @@
 
 class CSC_Hamiltonian
 {
-        private:
+private:
     std::string jset_filename;
     int tot_site_num;
     int mat_dim;
     int nnz;
-    int* row;
-    int* col_ptr;
-    double* val;
+    int *row;
+    int *col_ptr;
+    double *val;
     int ls_count;
+    bool lanczos_check;
 
     // Hamiltonian行列の非ゼロ要素の個数を数え上げる
     void count_nnz();
@@ -26,14 +27,14 @@ class CSC_Hamiltonian
     void set_CscElem(int i);
     // COO形式での行列ベクトル積の計算を行う(uをベクトル、HをHamiltonian行列としてu
     // += Huを計算する)
-    void csc_mvprod(double* u_i, double* u_j);
+    void csc_mvprod(double *u_i, double *u_j);
 
     Jset J;
     void set_J() { J.set(); }
-    void csc_spin(int m, int site_, int& row_index, int& col_ptr_val,
-                  double& szz);
+    void csc_spin(int m, int site_, int &row_index, int &col_ptr_val,
+                  double &szz);
 
-        public:
+public:
     EIGEN Eig;
     //コンストラクタ
     explicit CSC_Hamiltonian(std::string filename, int site)
@@ -45,6 +46,7 @@ class CSC_Hamiltonian
           col_ptr(new int[mat_dim + 1]),
           val(new double[1]),
           ls_count(0),
+          lanczos_check(false),
           J(filename),
           Eig(1)
     {
@@ -53,7 +55,7 @@ class CSC_Hamiltonian
     }
 
     //コピーコンストラクタ
-    CSC_Hamiltonian(const CSC_Hamiltonian& h);
+    CSC_Hamiltonian(const CSC_Hamiltonian &h);
 
     //デストラクタ
     ~CSC_Hamiltonian()
@@ -65,7 +67,7 @@ class CSC_Hamiltonian
     }
 
     //代入演算子
-    CSC_Hamiltonian& operator=(const CSC_Hamiltonian& h);
+    CSC_Hamiltonian &operator=(const CSC_Hamiltonian &h);
 
     /*----------------------ゲッタ-----------------------*/
     // Jsetの情報を書き込んだファイルの名前を返す
@@ -122,10 +124,10 @@ class CSC_Hamiltonian
 };
 
 //出力ストリームにhを挿入する
-std::ostream& operator<<(std::ostream& s, const CSC_Hamiltonian& h);
+std::ostream &operator<<(std::ostream &s, const CSC_Hamiltonian &h);
 
 template <typename T>
-void vec_init(int dim, T* vec)
+void vec_init(int dim, T *vec)
 {
     for (int i = 0; i < dim; i++)
     {
