@@ -1,71 +1,64 @@
-#ifndef ___Class_CSC_Hamiltonian
-#define ___Class_CSC_Hamiltonian
+#ifndef ___Class_CSC_Sub_Hamiltonian
+#define ___Class_CSC_Sub_Hamiltonian
 
 #include <mkl.h>
-
 #include <iomanip>
 
 #include "../EIGEN/EIGEN.hpp"
 #include "../Jset/Jset.hpp"
 
-class CSC_Hamiltonian
+class CSC_Sub_Hamiltonian
 {
-private:
+public:
     std::string jset_filename;
     int tot_site_num;
+    int bit;
     int mat_dim;
+    int sub_mat_dim;
     int nnz;
     int *row;
     int *col_ptr;
     double *val;
+    int *bm;
+    int *gbm;
     int ls_count;
     bool lanczos_check;
-
-    // CSC形式の配列の要素数を変更し、0で初期化する
-    void set_CscElem(int i);
-    // CSC形式での行列ベクトル積の計算を行う(uをベクトル、HをHamiltonian行列としてu
-    // += Huを計算する)
-    void csc_mvprod(double *u_i, double *u_j);
-
     Jset J;
-    void set_J() { J.set(); }
-    void csc_spin(int m, int site_, int &row_index, int &col_ptr_val,
-                  double &szz);
-
-public:
     EIGEN Eig;
+
     // コンストラクタ
-    explicit CSC_Hamiltonian(std::string filename, int site)
+    CSC_Sub_Hamiltonian(std::string filename, int site, int b)
         : jset_filename(filename),
           tot_site_num(site),
+          bit(b),
           mat_dim(1 << tot_site_num),
+          sub_mat_dim(comb(site, b)),
           nnz(0),
           row(new int[1]),
-          col_ptr(new int[mat_dim + 1]),
+          col_ptr(new int[sub_mat_dim + 1]),
           val(new double[1]),
+          bm(new int[sub_mat_dim]),
+          gbm(new int[1]),
           ls_count(0),
           lanczos_check(false),
           J(filename),
           Eig(1)
     {
+        std::cout << comb(site, b) << std::endl;
         set_J();
-        std::cout << "CSC_Hamiltonian::constructed.\n";
+        std::cout << "CSC_Sub_Hamiltonian::constructed.\n";
     }
 
-    // コピーコンストラクタ
-    CSC_Hamiltonian(const CSC_Hamiltonian &h);
-
     // デストラクタ
-    ~CSC_Hamiltonian()
+    ~CSC_Sub_Hamiltonian()
     {
         delete[] row;
         delete[] col_ptr;
         delete[] val;
+        delete[] bm;
+        delete[] gbm;
         std::cout << "CSC_Hamiltonian::destructed.\n";
     }
-
-    // 代入演算子
-    CSC_Hamiltonian &operator=(const CSC_Hamiltonian &h);
 
     /*----------------------ゲッタ-----------------------*/
     // Jsetの情報を書き込んだファイルの名前を返す
@@ -75,7 +68,7 @@ public:
     int site() const { return tot_site_num; }
 
     // 行列の次元を返す
-    int dim() const { return mat_dim; }
+    int sub_dim() const { return sub_mat_dim; }
 
     // HamiltonianのNon zero要素の個数を返す
     int num_nnz() const { return nnz; }
@@ -93,28 +86,37 @@ public:
     int num_ls() const { return ls_count; }
     /*----------------------------------------------------------------*/
 
-    /*------------------------その他メンバ関数------------------------*/
-    // row, col, valの初期化をおこなう
+    /*------------------------------------その他メンバ関数------------------------------*/
+    // row valの初期化を行う
     void init();
 
-    // Hamiltonian行列の非ゼロ要素の個数を数え上げる
-    void count_nnz();
+    // CSC形式のrowとvalの要素数をiに変更し、0で初期化する
+    void set_sub_CscElem(int i);
 
-    // CSC形式でHamiltonian行列の行列要素の計算と配列への格納を行う
-    void csc_hamiltonian();
+    // 部分空間を張るスピン状態を確認する
+    void subspace_check();
+
+    // スピン演算子
+    void csc_sub_spin(int m, int site, int &row_index, int &col_ptr_val, double &szz);
 
     // 部分空間におけるHamiltonian行列の非ゼロ要素の個数を数え上げる
     void count_sub_nnz();
 
-    // 部分対角化をCSC形式で実装する
-    void csc_sub_hamiltonian(int bit);
+    // 部分空間におけるHamiltonian行列要素の計算と配列への格納を行う
+    void csc_sub_hamiltonian();
 
-    // lanczos法によりHamiltonianの基底状態の固有値、固有ベクトルを求める
-    void csc_lanczos(int tri_mat_dim, char c = 'N', char info_ls = 'n');
+    void csc_sub_lanczos(int tri_mat_dim, char c = 'N', char info_ls = 'n');
 
-    /*-------------------------------------------------------------------*/
+    // CSC形式での行列ベクトル積の計算を行う
+    void csc_sub_mvprod(double *u_i, double *u_j);
 
-    /*------------------------------標準出力関係-------------------------*/
+    // Jsetを設定する
+    void set_J() { J.set(); }
+
+    int comb(int n, int r);
+    /*-------------------------------------------------------------------------------------*/
+
+    /*-------------------------------------標準出力関係---------------------------------*/
     // 標準出力において、倍精度を何桁まで出力するかを指定する
     int precision = 5;
 
@@ -126,15 +128,14 @@ public:
 
     // COO_Hamiltonianオブジェクトの文字列表現を返却する
     std::string to_string() const;
-
     /*--------------------------------------------------------------------*/
 };
 
 // 出力ストリームにhを挿入する
-std::ostream &operator<<(std::ostream &s, const CSC_Hamiltonian &h);
+std::ostream &operator<<(std::ostream &s, const CSC_Sub_Hamiltonian &h);
 
 template <typename T>
-void vec_init(int dim, T *vec)
+void vec_sub_init(int dim, T *vec)
 {
     for (int i = 0; i < dim; i++)
     {

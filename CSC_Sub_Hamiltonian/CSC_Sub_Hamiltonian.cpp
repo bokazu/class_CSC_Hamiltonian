@@ -1,4 +1,4 @@
-#include "CSC_Hamiltonian.hpp"
+#include "CSC_Sub_Hamiltonian.hpp"
 
 #include <mkl.h>
 
@@ -9,58 +9,8 @@
 
 using namespace std;
 
-// コピーコンストラクタ
-CSC_Hamiltonian::CSC_Hamiltonian(const CSC_Hamiltonian &h)
-    : jset_filename(h.jset_filename),
-      tot_site_num(h.tot_site_num),
-      mat_dim(h.mat_dim),
-      nnz(h.nnz),
-      J(h.J),
-      Eig(h.Eig)
-{
-    row = new int[nnz];
-    col_ptr = new int[mat_dim + 1];
-    val = new double[nnz];
-
-    for (int i = 0; i < nnz; i++)
-    {
-        row[i] = h.row[i];
-    }
-
-    for (int i = 0; i < mat_dim + 1; i++)
-    {
-        col_ptr[i] = h.col_ptr[i];
-    }
-    cblas_dcopy(nnz, h.val, 1, val, 1);
-    std::cout << "CSC_Hamiltonian::copy_has_done\n";
-}
-
-// 代入演算子
-CSC_Hamiltonian &CSC_Hamiltonian::operator=(const CSC_Hamiltonian &h)
-{
-    if (h.nnz != nnz)
-    {
-        std::cout << "CSC_Hamiltonian::bad array. Please set same nnz array "
-                     "both side of \"=\" . \n";
-    }
-    else
-    {
-        for (int i = 0; i < nnz; i++)
-        {
-            row[i] = h.row[i];
-        }
-        for (int i = 0; i < mat_dim + 1; i++)
-        {
-            col_ptr[i] = h.col_ptr[i];
-        }
-        cblas_dcopy(nnz, h.val, 1, val, 1);
-    }
-
-    return *this;
-}
-
 // row, col_ptr,valの初期化を行う
-void CSC_Hamiltonian::init()
+void CSC_Sub_Hamiltonian::init()
 {
     for (int i = 0; i < nnz; i++)
     {
@@ -68,14 +18,14 @@ void CSC_Hamiltonian::init()
         val[i] = 0.0;
     }
 
-    for (int i = 0; i < mat_dim + 1; i++)
+    for (int i = 0; i < sub_mat_dim + 1; i++)
     {
         col_ptr[i] = 0;
     }
 }
 
 // CSC形式の配列のrow,valの要素数を変更し、すべて0で初期化する
-void CSC_Hamiltonian::set_CscElem(int i)
+void CSC_Sub_Hamiltonian::set_sub_CscElem(int i)
 {
     delete[] row;
     delete[] val;
@@ -86,14 +36,82 @@ void CSC_Hamiltonian::set_CscElem(int i)
     this->init();
 }
 
-void CSC_Hamiltonian::count_nnz()
+// 二項係数の計算
+int CSC_Sub_Hamiltonian::comb(int n, int r)
+{
+    vector<vector<int>> v(n + 1, vector<int>(n + 1, 0));
+    for (int i = 0; i < v.size(); i++)
+    {
+        v[i][0] = 1;
+        v[i][i] = 1;
+    }
+
+    for (int k = 2; k < v.size(); k++)
+    {
+        for (int j = 1; j < k; j++)
+        {
+            v[k][j] = (v[k - 1][j - 1] + v[k - 1][j]);
+        }
+    }
+    return v[n][r];
+}
+
+// 部分空間を張るスピン状態を確認する
+void CSC_Sub_Hamiltonian::subspace_check()
+{
+    delete[] gbm;
+
+    int itr = 0;
+    int gbm_size;
+
+    // gbmのサイズ確認と配列のメモリ確保
+    for (int m = mat_dim - 1; m >= 0; m--)
+    {
+        boost::dynamic_bitset<> ket_m(tot_site_num, m);
+        bool flag = false;
+        if (ket_m.count() == bit)
+        {
+            if (itr == 0)
+            {
+                gbm_size = m + 1;
+                gbm = new int[gbm_size];
+                vec_sub_init(gbm_size, gbm);
+                flag = true;
+            }
+        }
+        if (flag == true)
+            break;
+    }
+
+    // bm、gbmへの要素の格納
+    for (int m = 0; m < gbm_size; m++)
+    {
+        boost::dynamic_bitset<> ket_m(tot_site_num, m);
+        if (ket_m.count() == bit)
+        {
+            bm[itr] = m;
+            gbm[m] = itr;
+            itr++;
+        }
+    }
+
+    if (bm[sub_mat_dim - 1] != gbm_size - 1)
+    {
+        cout << "error::bm & gbm bad array. " << endl;
+    }
+}
+
+// 部分空間におけるHamiltonian行列の非ゼロ要素をカウントする
+void CSC_Sub_Hamiltonian::count_sub_nnz()
 {
     nnz = 0;
-
+    int m;
+    int Jset_line = J.get_line();
     double szz;
 
-    for (int m = 0; m < mat_dim; m++)
+    for (int bm_itr = 0; bm_itr < sub_mat_dim; bm_itr++)
     {
+        m = bm[bm_itr];
         szz = 0.;
         for (int site_i = 0; site_i < tot_site_num; site_i++)
         {
@@ -101,8 +119,7 @@ void CSC_Hamiltonian::count_nnz()
             bool bit_check0, bit_check1;
 
             int j_line = 0;
-
-            for (int l = j_line; l < J.get_line(); l++)
+            for (int l = j_line; l < Jset_line; l++)
             {
                 if (J.index(0, l) == site_i)
                 {
@@ -117,33 +134,30 @@ void CSC_Hamiltonian::count_nnz()
                     }
                     else
                     {
-                        boost::dynamic_bitset<> ket_m1(tot_site_num, m);
-
-                        ket_m1.flip(site_j);
-                        ket_m1.flip(site_i);
-                        int n = ket_m1.to_ulong();
-
                         nnz++;
                         szz -= 0.25 * J.val(l);
                     }
                 }
             }
         }
-        if (szz != 0.)
+        if (szz != 0)
+        {
             nnz++;
+        }
     }
 }
 
-// spin演算子と状態ベクトルの計算を行う
-void CSC_Hamiltonian::csc_spin(int m, int site_i, int &row_index,
-                               int &col_ptr_val, double &szz)
+// 部分空間におけるspin演算子と状態ベクトルの計算を行う
+void CSC_Sub_Hamiltonian::csc_sub_spin(int bm_itr, int site_i, int &row_index, int &col_ptr_val, double &szz)
 {
+    int m = bm[bm_itr];
     boost::dynamic_bitset<> ket_m(tot_site_num, m);
     bool bit_check0, bit_check1;
 
     int j_line = 0;
+    int Jset_line = J.get_line();
 
-    for (int l = j_line; l < J.get_line(); l++)
+    for (int l = j_line; l < Jset_line; l++)
     {
         if (J.index(0, l) == site_i)
         {
@@ -151,7 +165,7 @@ void CSC_Hamiltonian::csc_spin(int m, int site_i, int &row_index,
             bit_check0 = ket_m.test(site_i);
             bit_check1 = ket_m.test(site_j);
 
-            // 注目する2サイトのスピン状態についての場合分け
+            // 注目する2サイトのスピン状態を場合分けする
             if (bit_check0 == bit_check1)
             {
                 szz += 0.25 * J.val(l);
@@ -160,11 +174,13 @@ void CSC_Hamiltonian::csc_spin(int m, int site_i, int &row_index,
             {
                 boost::dynamic_bitset<> ket_m1(tot_site_num, m);
 
-                ket_m1.flip(site_j);
                 ket_m1.flip(site_i);
-                int n = ket_m1.to_ulong();
+                ket_m1.flip(site_j);
 
-                row[row_index] = n;
+                int n = (int)(ket_m1.to_ulong());
+                int bm_ctr = gbm[n]; // spin状態nが部分空間における何番目の状態かを取得
+
+                row[row_index] = bm_ctr;
                 val[row_index] = 0.5 * J.val(l);
                 row_index++;
                 col_ptr_val++;
@@ -175,19 +191,20 @@ void CSC_Hamiltonian::csc_spin(int m, int site_i, int &row_index,
     }
 }
 
-// Hamiltonian行列要素の計算とCOO形式での配列への格納を行う
-void CSC_Hamiltonian::csc_hamiltonian()
+// 部分空間におけるHamiltonian行列をCSC形式で格納する
+void CSC_Sub_Hamiltonian::csc_sub_hamiltonian()
 {
-    count_nnz();
-    // CSC形式のrow,
-    // valのメモリを再確保する(デフォルトは要素1つしか確保していないため)
-    set_CscElem(nnz);
+    // 特定の磁化における部分空間での非ゼロ要素数の算出
+    count_sub_nnz();
+    // CSC形式の配列row, valのメモリの再確保
+    set_sub_CscElem(nnz);
 
     int row_index = 0;
     int col_ptr_index = 0;
     int col_ptr_val = 0;
+
     double szz;
-    for (int m = 0; m < mat_dim; m++)
+    for (int bm_itr = 0; bm_itr < sub_mat_dim; bm_itr++)
     {
         szz = 0.;
         col_ptr[col_ptr_index] = col_ptr_val;
@@ -195,36 +212,33 @@ void CSC_Hamiltonian::csc_hamiltonian()
 
         for (int site_i = 0; site_i < tot_site_num; site_i++)
         {
-            csc_spin(m, site_i, row_index, col_ptr_val, szz);
+            csc_sub_spin(bm_itr, site_i, row_index, col_ptr_val, szz);
         }
 
         if (szz != 0.0)
         {
-            row[row_index] = m;
+            row[row_index] = bm_itr;
             val[row_index] = szz;
             row_index++;
             col_ptr_val++;
         }
     }
 
-    col_ptr[mat_dim] = nnz;
-};
+    col_ptr[sub_mat_dim] = nnz;
+}
 
-/*============================Lanczos
- * Algorithm関係の関数=================================*/
-
-// ベクトルの規格化用の関数(非メンバ関数)
-void sdz(int dim, double *vec)
+/*-------------Lanczos algorithm関係の関数--------------------*/
+// ベクトルの規格化用関数
+void sub_sdz(int dim, double *vec)
 {
     double a = 1. / cblas_dnrm2(dim, vec, 1);
     cblas_dscal(dim, a, vec, 1);
 }
 
-// CSC形式での行列ベクトル積の計算を行う(uをベクトル、HをHamiltonian行列としてu_j
-// += Hu_iを計算する)
-void CSC_Hamiltonian::csc_mvprod(double *u_i, double *u_j)
+/*部分空間におけるCSC形式でのMV積の計算を行う*/
+void CSC_Sub_Hamiltonian::csc_sub_mvprod(double *u_i, double *u_j)
 {
-    for (int i = 0; i < mat_dim; i++)
+    for (int i = 0; i < sub_mat_dim; i++)
     {
         for (int j = col_ptr[i]; j < col_ptr[i + 1]; j++)
         {
@@ -233,76 +247,76 @@ void CSC_Hamiltonian::csc_mvprod(double *u_i, double *u_j)
     }
 }
 
-// Hamiltonianの基底状態の固有値と固有ベクトルを計算する
-void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
+void CSC_Sub_Hamiltonian::csc_sub_lanczos(int tri_mat_dim, char c, char info_ls)
 {
     ls_count = 0;
-    double eps = 1.0;     // step間の誤差を代入するための変数
-    double err = 1.0e-16; // 要求精度
-    bool err_checker =
-        true; // 誤差が要求精度の範囲内に収まっているかを確認するためのflag
+    double eps = 1.0;        // step間の誤差を代入するための変数
+    double err = 1.0e-15;    // 要求精度
+    bool err_checker = true; // 誤差が要求精度の範囲内に収まっているかを確認するためのflag
 
-    // 固有ベクトルを格納するための配列の要素数を変更する(デフォルトは要素数1)
+    // 固有ベクトルを格納するための配列の要素数を変更する
     if (c == 'V')
-        Eig.evec_elem(mat_dim);
+    {
+        Eig.evec_elem(sub_mat_dim);
+    }
 
-    /*=================初期ベクトルの用意================*/
+    /*-----------------初期ベクトルの用意------------------*/
     double **u = new double *[2];
     for (int k = 0; k < 2; k++)
     {
-        u[k] = new double[mat_dim];
+        u[k] = new double[sub_mat_dim];
     }
 
     random_device rand;
     mt19937 mt(rand());
     uniform_real_distribution<> rand1(0, 1);
-    for (int k = 0; k < mat_dim; k++)
+    for (int k = 0; k < sub_mat_dim; k++)
     {
         u[0][k] = rand1(mt);
         u[1][k] = 0.0;
     }
-    sdz(mat_dim, u[0]);
+    sub_sdz(sub_mat_dim, u[0]);
 
     if (c == 'V')
-        cblas_dcopy(mat_dim, u[0], 1, Eig.data(), 1);
-    /*============================================*/
+    {
+        cblas_dcopy(sub_mat_dim, u[0], 1, Eig.data(), 1);
+    }
+    /*-----------------------------------------------------*/
 
     // 三重対角行列の主対角成分
     double *alpha = new double[tri_mat_dim];
-    vec_init(tri_mat_dim, alpha);
+    vec_sub_init(tri_mat_dim, alpha);
 
     // 三重対角行列の次対角成分
     double *beta = new double[tri_mat_dim - 1];
-    vec_init(tri_mat_dim - 1, beta);
+    vec_sub_init(tri_mat_dim - 1, beta);
 
     // ls = 偶数stepでの近似固有値
     double *eval_even = new double[tri_mat_dim];
-    vec_init(tri_mat_dim, eval_even);
+    vec_sub_init(tri_mat_dim, eval_even);
 
     // ls = 奇数stepでの近似固有値
     double *eval_odd = new double[tri_mat_dim];
-    vec_init(tri_mat_dim, eval_odd);
+    vec_sub_init(tri_mat_dim, eval_odd);
 
     // LAPACKに三重対角行列の主対角成分を渡す用の配列
     double *diag = new double[tri_mat_dim];
-    vec_init(tri_mat_dim, diag);
+    vec_sub_init(tri_mat_dim, diag);
 
     // LAPACKに三重対角行列の主対角成分を渡す用の配列
     double *sub_diag = new double[tri_mat_dim - 1];
-    vec_init(tri_mat_dim - 1, sub_diag);
+    vec_sub_init(tri_mat_dim - 1, sub_diag);
 
     // LAPACKに渡し、c = 'N'なら参照されず、'V'なら固有ベクトルが格納される
     double *tri_diag_evec;
 
-    // 固有ベクトルを計算する場合は配列を確保する
     if (c == 'V')
     {
         tri_diag_evec = new double[tri_mat_dim * tri_mat_dim];
-        vec_init(tri_mat_dim * tri_mat_dim, tri_diag_evec);
+        vec_sub_init(tri_mat_dim * tri_mat_dim, tri_diag_evec);
     }
 
-    /*==============================lanczos
-     * Algorithm=======================================*/
+    /*=======Lanczos Algorithm=======*/
     for (int ls = 0; ls < tri_mat_dim; ls++)
     {
         if (err_checker)
@@ -312,41 +326,44 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
             if (ls > 0)
             {
                 if (ls % 2 == 0)
-                    cblas_dscal(mat_dim, -beta[ls - 1], u[1], 1);
+                {
+                    cblas_dscal(sub_mat_dim, -beta[ls - 1], u[1], 1);
+                }
                 else
-                    cblas_dscal(mat_dim, -beta[ls - 1], u[0], 1);
+                {
+                    cblas_dscal(sub_mat_dim, -beta[ls - 1], u[0], 1);
+                }
             }
 
             if (ls % 2 == 0)
             {
                 // ls = 偶数step
-                csc_mvprod(u[0], u[1]);
-                alpha[ls] = cblas_ddot(mat_dim, u[1], 1, u[0], 1);
-                cblas_daxpy(mat_dim, -alpha[ls], u[0], 1, u[1], 1);
+                csc_sub_mvprod(u[0], u[1]);
+                alpha[ls] = cblas_ddot(sub_mat_dim, u[1], 1, u[0], 1);
+                cblas_daxpy(sub_mat_dim, -alpha[ls], u[0], 1, u[1], 1);
                 if (ls != tri_mat_dim - 1)
                 {
-                    beta[ls] = cblas_dnrm2(mat_dim, u[1], 1);
-                    cblas_dscal(mat_dim, 1. / beta[ls], u[1], 1);
+                    beta[ls] = cblas_dnrm2(sub_mat_dim, u[1], 1);
+                    cblas_dscal(sub_mat_dim, 1. / beta[ls], u[1], 1);
                 }
             }
             else
             {
                 // ls = 奇数step
-                csc_mvprod(u[1], u[0]);
-                alpha[ls] = cblas_ddot(mat_dim, u[1], 1, u[0], 1);
-                cblas_daxpy(mat_dim, -alpha[ls], u[1], 1, u[0], 1);
+                csc_sub_mvprod(u[1], u[0]);
+                alpha[ls] = cblas_ddot(sub_mat_dim, u[1], 1, u[0], 1);
+                cblas_daxpy(sub_mat_dim, -alpha[ls], u[1], 1, u[0], 1);
                 if (ls != tri_mat_dim - 1)
                 {
-                    beta[ls] = cblas_dnrm2(mat_dim, u[0], 1);
-                    cblas_dscal(mat_dim, 1. / beta[ls], u[0], 1);
+                    beta[ls] = cblas_dnrm2(sub_mat_dim, u[0], 1);
+                    cblas_dscal(sub_mat_dim, 1. / beta[ls], u[0], 1);
                 }
             }
-            /*===================================================================================*/
-
             /*===========================三重対角行列の数値対角(LAPACK)=============================*/
-            vec_init(tri_mat_dim, diag);
-            vec_init(tri_mat_dim - 1, sub_diag);
+            vec_sub_init(tri_mat_dim, diag);
+            vec_sub_init(tri_mat_dim - 1, sub_diag);
             int info = 0;
+
             if (ls % 2 == 0)
             {
                 // 偶数step
@@ -402,9 +419,7 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
                 cblas_dcopy(tri_mat_dim, diag, 1, eval_even, 1);
                 if (info_ls == 'y')
                 {
-                    std::cout << "@ls = " << ls
-                              << " : eigen value = " << eval_even[0]
-                              << std::endl;
+                    cout << "@ls = " << ls << " : eigen value = " << eval_even[0] << endl;
                 }
                 else if (info_ls == 's')
                 {
@@ -463,7 +478,6 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
                     cout << "@ls = " << ls << endl;
                 }
             }
-            /*======================================================================*/
 
             /*============================収束状況の確認==============================*/
             if (ls > 0)
@@ -482,7 +496,6 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
                     lanczos_check = true;
                 }
             }
-            /*=====================================================================*/
         }
         else
         {
@@ -491,7 +504,7 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
         }
     }
 
-    /*========================基底状態の固有値===========================*/
+    // /*========================基底状態の固有値===========================*/
     if (ls_count % 2 == 0)
         Eig.set_eval(eval_even[0]);
     else
@@ -503,51 +516,50 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
     // 固有ベクトルを計算する
     if (c == 'V')
     {
-        vec_init(mat_dim, u[0]);
-        vec_init(mat_dim, u[1]);
-        cblas_dcopy(mat_dim, Eig.data(), 1, u[0], 1);
+        vec_sub_init(sub_mat_dim, u[0]);
+        vec_sub_init(sub_mat_dim, u[1]);
+        cblas_dcopy(sub_mat_dim, Eig.data(), 1, u[0], 1);
 
         for (int ls = 0; ls < ls_count + 2; ls++)
         {
             if (ls % 2 == 0)
             {
                 if (ls == 0)
-                    cblas_dscal(mat_dim, tri_diag_evec[ls], Eig.data(), 1);
+                    cblas_dscal(sub_mat_dim, tri_diag_evec[ls], Eig.data(), 1);
                 else
-                    cblas_daxpy(mat_dim, tri_diag_evec[ls], u[0], 1, Eig.data(),
+                    cblas_daxpy(sub_mat_dim, tri_diag_evec[ls], u[0], 1, Eig.data(),
                                 1);
             }
             else
             {
-                cblas_daxpy(mat_dim, tri_diag_evec[ls], u[1], 1, Eig.data(), 1);
+                cblas_daxpy(sub_mat_dim, tri_diag_evec[ls], u[1], 1, Eig.data(), 1);
             }
 
             if (ls > 0)
             {
                 if (ls % 2 == 0)
-                    cblas_dscal(mat_dim, -beta[ls - 1], u[1], 1);
+                    cblas_dscal(sub_mat_dim, -beta[ls - 1], u[1], 1);
                 else
-                    cblas_dscal(mat_dim, -beta[ls - 1], u[0], 1);
+                    cblas_dscal(sub_mat_dim, -beta[ls - 1], u[0], 1);
             }
 
             if (ls % 2 == 0)
             {
-                csc_mvprod(u[0], u[1]);
-                cblas_daxpy(mat_dim, -alpha[ls], u[0], 1, u[1], 1);
+                csc_sub_mvprod(u[0], u[1]);
+                cblas_daxpy(sub_mat_dim, -alpha[ls], u[0], 1, u[1], 1);
                 if (ls != tri_mat_dim - 1)
-                    cblas_dscal(mat_dim, 1. / beta[ls], u[1], 1);
+                    cblas_dscal(sub_mat_dim, 1. / beta[ls], u[1], 1);
             }
             else
             {
-                csc_mvprod(u[1], u[0]);
-                cblas_daxpy(mat_dim, -alpha[ls], u[1], 1, u[0], 1);
+                csc_sub_mvprod(u[1], u[0]);
+                cblas_daxpy(sub_mat_dim, -alpha[ls], u[1], 1, u[0], 1);
                 if (ls != tri_mat_dim - 1)
-                    cblas_dscal(mat_dim, 1. / beta[ls], u[0], 1);
+                    cblas_dscal(sub_mat_dim, 1. / beta[ls], u[0], 1);
             }
         }
-        sdz(mat_dim, Eig.data());
+        sub_sdz(sub_mat_dim, Eig.data());
     }
-
     /*==========================配列リソースのリリース part2
      * ====================*/
     for (int i = 0; i < 2; i++)
@@ -564,73 +576,27 @@ void CSC_Hamiltonian::csc_lanczos(int tri_mat_dim, char c, char info_ls)
         delete[] tri_diag_evec;
 }
 
-/*========================================================================================*/
-
-/*========================================================================================*/
-
-// row, col, valの全成分を出力する
-void CSC_Hamiltonian::print() const
-{
-    std::cout << "\n\n";
-    std::cout << "==========================================\n";
-    std::cout << setw(5) << "row" << setw(5) << "col" << setw(5 + precision)
-              << setprecision(precision) << " val\n";
-    std::cout << "------------------------------------------\n";
-    if (nnz < mat_dim + 1)
-    {
-        for (int i = 0; i < mat_dim + 1; i++)
-        {
-            if (i < nnz)
-            {
-                std::cout << setw(5) << row[i] << setw(5) << col_ptr[i]
-                          << setw(5 + precision) << val[i] << std::endl;
-            }
-            else
-            {
-                std::cout << setw(5) << " " << setw(5) << col_ptr[i]
-                          << setw(5 + precision) << " " << std::endl;
-            }
-        }
-    }
-    else if (nnz > mat_dim + 1)
-    {
-        for (int i = 0; i < nnz; i++)
-        {
-            if (i < mat_dim + 1)
-            {
-                std::cout << setw(5) << row[i] << setw(5) << col_ptr[i]
-                          << setw(5 + precision) << val[i] << std::endl;
-            }
-            else
-            {
-                std::cout << setw(5) << row[i] << setw(5) << " "
-                          << setw(5 + precision) << val[i] << std::endl;
-            }
-        }
-    }
-    std::cout << "==========================================\n";
-}
-
-// 文字列表現を返却する
-std::string CSC_Hamiltonian::to_string() const
+std::string CSC_Sub_Hamiltonian::to_string() const
 {
     std::ostringstream s;
     s << "\n\n";
     s << "Information of Hamiltonian\n";
-    s << "-------------------------------------------------------\n";
+    s << "---------------------------------------\n";
     s << "@Number of site   : " << tot_site_num << std::endl;
-    s << "@Matrix dimension : " << mat_dim << std::endl;
-    s << "@non zero element : " << nnz << std::endl;
+    s << "up spin site      : " << bit << endl;
+    s << "Magnetization val : " << bit - tot_site_num * 0.5 << endl;
+    s << "@Matrix dimension : " << sub_mat_dim << std::endl;
+    s << "@non zero elements: " << nnz << endl;
     s << J.to_string() << std::endl;
-    s << "@lanczos chcekc   : " << lanczos_check << std::endl;
-    s << "@lanczos step     : " << ls_count << std::endl;
-    s << Eig.to_string() << std::endl;
-    s << "-------------------------------------------------------\n";
+    s << "@lanczos check    : " << lanczos_check << endl;
+    s << "@lanczos step     : " << ls_count << endl;
+    s << Eig.to_string() << endl;
+    s << "------------------------------------------\n";
 
     return s.str();
 }
 
-ostream &operator<<(ostream &s, const CSC_Hamiltonian &h)
+ostream &operator<<(ostream &s, const CSC_Sub_Hamiltonian &h)
 {
     return s << h.to_string();
 }
