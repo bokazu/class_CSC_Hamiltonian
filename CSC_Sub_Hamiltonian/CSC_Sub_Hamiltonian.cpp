@@ -68,7 +68,7 @@ void CSC_Sub_Hamiltonian::subspace_check()
     for (int m = mat_dim - 1; m >= 0; m--)
     {
         boost::dynamic_bitset<> ket_m(tot_site_num, m);
-        bool flag = false;
+        bool flag = false; // このflagはfor loopの外に出さないと多分意味がない
         if (ket_m.count() == bit)
         {
             if (itr == 0)
